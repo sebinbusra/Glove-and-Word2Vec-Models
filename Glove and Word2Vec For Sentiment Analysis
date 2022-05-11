@@ -1,0 +1,154 @@
+!pip install glove-python-binary
+
+import glove 
+from glove import Corpus, Glove
+from gensim.models import Word2Vec
+from multiprocessing import Pool
+from gensim.models.keyedvectors import KeyedVectors
+from scipy import spatial
+
+import numpy as np
+import pandas as pd 
+import io
+import nltk
+import re
+import string
+
+nltk.download('punkt')
+nltk.download('averaged_perceptron_tagger')
+nltk.download('maxent_ne_chunker')
+nltk.download('words')
+nltk.download('wordnet')
+nltk.download('stopwords')
+nltk.download('omw-1.4')
+from bs4 import BeautifulSoup  
+from nltk.corpus import wordnet, stopwords
+from nltk import word_tokenize
+from nltk.stem import SnowballStemmer
+from snowballstemmer import TurkishStemmer
+from nltk.util import ngrams
+
+from google.colab import files
+uploaded = files.upload()
+
+df = pd.read_csv(io.BytesIO(uploaded['3000_scraped_data.csv']))
+
+# Exploratory Data Analysis 
+df.head()
+df.columns
+print('length of data is', len(df))
+df. shape
+df.info()
+df.dtypes
+np.sum(df.isnull().any(axis=1))
+
+# Getting stars from stars column
+stars = df["stars"]
+new_stars = []
+def star_list(x):
+    x = list(x)
+    for i in range(len(x)):
+        new_stars.append(x[i][-3:-2])
+    return new_stars
+    
+stars_no = star_list(stars)
+stars_column = pd.Series(stars_no)
+df['stars'] = stars_column
+df.head()
+
+# Returns sentiment value based on the overall ratings
+def generate_sentiment(row):
+    if row['stars'] == '3':
+        val = 'Neutral'
+    elif row['stars'] == '1' or row['stars'] == '2':
+        val = 'Negative'
+    elif row['stars'] == '4' or row['stars'] == '5':
+        val = 'Positive'
+    else:
+        val = -1
+    return val
+
+df['sentiment'] = df.apply(generate_sentiment, axis=1)
+df['sentiment'].value_counts()
+df.head()
+
+
+# Preprocessing 
+# Clean Text
+def cleantext(raw_text, remove_stopwords=True, stemming=True, split_text = False):
+    text1 = BeautifulSoup(raw_text, 'lxml').get_text()  # remove html
+    text2 = re.sub('[0123456789,\.!?:‘’()"]', '', text1) # remove non-character
+    words = text2.lower().split() # convert to lower case  
+    if remove_stopwords:
+      stop_word_list = nltk.corpus.stopwords.words('turkish') # removing stopwords
+      words = [w for w in words if not w in stop_word_list]
+    if stemming == True: # stemming Turkish words
+      turkStem = TurkishStemmer()
+      words = [turkStem.stemWord(word) for word in words]
+    if split_text == True: # split text
+      return (words)
+    return(" ".join(words))
+    
+reviews = df['comment']
+X_cleaned = []
+for review in reviews:
+   X_cleaned.append(cleantext(review))
+
+print(X_cleaned)   
+ 
+# Split review text into parsed sentences using NLTK's punkt tokenizer
+tokenizer = nltk.data.load('tokenizers/punkt/english.pickle')
+
+def Text_to_Sentences(review, tokenizer, remove_stopwords=False):
+    raw_sentences = tokenizer.tokenize(review.strip())
+    sentences = []
+    for raw_sentence in raw_sentences:
+        if len(raw_sentence) > 0:
+            sentences.append(cleantext(raw_sentence, remove_stopwords, split_text=True))
+    return sentences
+    
+y = df['stars'] 
+X_cleaned = np.array(X_cleaned)
+y = np.array(y)
+
+sentences = []
+for review in X_cleaned:
+  sentences += Text_to_Sentences(review, tokenizer)
+
+print(sentences)
+
+# word2vec
+
+model = Word2Vec(sentences = sentences, size = 200, sg = 1, window = 3, min_count = 1, iter = 10, workers = Pool()._processes)
+model.init_sims(replace = True)
+model.save('word2vec_model')
+
+print("Number of words in the vocabulary list : %d \n" %len(model.wv.index2word))
+print("Show first 10 words in the vocabulary list: \n", model.wv.index2word[0:10])
+# Load trained Word2Vec model
+model = Word2Vec.load('word2vec_model')
+
+# Get Word2Vec embedding matrix
+embedding_matrix = model.wv.syn0 
+print("Shape of embedding matrix : ", embedding_matrix.shape)
+print(embedding_matrix)
+
+
+# glove 
+
+# Create Corpus instance
+corpus = Corpus()
+# training the corpus to generate the co-occurence matrix which is used in GloVe
+corpus.fit(sentences, window = 3) 
+#creating a Glove object which will use the matrix created in the above lines
+glove = Glove(no_components = 200, learning_rate = 0.05)
+# Train model
+glove.fit(matrix = corpus.matrix, epochs = 30, no_threads = Pool()._processes, verbose = True)
+# Save and load model
+glove.add_dictionary(corpus.dictionary)
+glove.save('glove_model')
+
+w2v = glove.load("glove_model")
+w2v1 = glove.load("glove_model")
+print("Vector Representation for the word alışveriş in Glove:")
+np.array(w2v.word_vectors[w2v.dictionary['alışveriş']]).reshape(1,200)

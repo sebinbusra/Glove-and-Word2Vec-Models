@@ -43,16 +43,14 @@ df.dtypes
 np.sum(df.isnull().any(axis=1))
 
 # Getting stars from stars column
-stars = df["stars"]
 new_stars = []
 def star_list(x):
-    x = list(x)
-    for i in range(len(x)):
+    for i in range(len(list(x)):
         new_stars.append(x[i][-3:-2])
     return new_stars
     
-stars_no = star_list(stars)
-stars_column = pd.Series(stars_no)
+stars = df["stars"]
+stars_column = pd.Series(star_list(stars))
 df['stars'] = stars_column
 df.head()
 
@@ -119,7 +117,7 @@ print(sentences)
 
 # word2vec
 
-model = Word2Vec(sentences = sentences, size = 200, sg = 1, window = 3, min_count = 1, iter = 10, workers = Pool()._processes)
+model = Word2Vec(sentences = sentences, size = 300, sg = 1, window = 3, min_count = 1, iter = 10, workers = Pool()._processes)
 model.init_sims(replace = True)
 model.save('word2vec_model')
 
@@ -141,14 +139,40 @@ corpus = Corpus()
 # training the corpus to generate the co-occurence matrix which is used in GloVe
 corpus.fit(sentences, window = 3) 
 #creating a Glove object which will use the matrix created in the above lines
-glove = Glove(no_components = 200, learning_rate = 0.05)
+glove = Glove(no_components = 300, learning_rate = 0.05)
 # Train model
 glove.fit(matrix = corpus.matrix, epochs = 30, no_threads = Pool()._processes, verbose = True)
 # Save and load model
 glove.add_dictionary(corpus.dictionary)
 glove.save('glove_model')
 
-w2v = glove.load("glove_model")
-w2v1 = glove.load("glove_model")
+glove_model = glove.load("glove_model")
 print("Vector Representation for the word alışveriş in Glove:")
-np.array(w2v.word_vectors[w2v.dictionary['alışveriş']]).reshape(1,200)
+np.array(glove_model.word_vectors[glove_model.dictionary['alışveriş']]).reshape(1,300)
+glove_embed_matrix = glove_model.word_vectors
+
+# FastText Embeddings
+
+!git clone https://github.com/facebookresearch/fastText.git
+%cd fastText
+!make
+!cp fasttext ../
+%cd ..
+!pip install fasttext
+import fasttext 
+
+# Download, extract and load Fasttext word embedding vectors
+!wget https://dl.fbaipublicfiles.com/fasttext/vectors-crawl/cc.tr.300.vec.gz
+!gunzip cc.tr.300.vec.gz
+
+def load_vectors(fname):
+    fin = io.open(fname, 'r', encoding='utf-8', newline='\n', errors='ignore')
+    n, d = map(int, fin.readline().split())
+    data = {}
+    for line in fin:
+        tokens = line.rstrip().split(' ')
+        data[tokens[0]] = np.array(list(map(float, tokens[1:])))
+    return data
+    
+ if __name__ == '__main__':
+    ft_embed_matrix = load_vectors('cc.tr.300.vec')
